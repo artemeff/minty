@@ -3,26 +3,18 @@ defmodule Minty.HTTP2.Conn do
 
   require Logger
 
-  def start_link(opts) when is_list(opts) do
-    GenServer.start_link(__MODULE__, opts, Keyword.take(opts, [:name, :timeout, :debug, :spawn_opt]))
-  end
+  def start_link(uri_or_opts, opts \\ []) when is_list(opts) do
+    case Minty.Config.http2(uri_or_opts, opts) do
+      {:ok, config} ->
+        GenServer.start_link(__MODULE__, config, Keyword.take(opts, [:name, :timeout, :debug, :spawn_opt]))
 
-  def start_link(uri) when is_binary(uri) do
-    start_link(uri, [])
-  end
-
-  def start_link(uri, opts) when is_binary(uri) and is_list(opts) do
-    case URI.parse(uri) do
-      %URI{scheme: "https", host: host, port: port} ->
-        start_link(Keyword.merge(opts, [host: host, port: port]))
-
-      %URI{} ->
-        {:error, :https_only}
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 
-  def request(conn, method, path, headers, body) do
-    GenServer.call(conn, {:request, {method, path, headers, body}})
+  def request(conn, method, path, headers, body, opts \\ []) do
+    GenServer.call(conn, {:request, {method, path, headers, body}}, Keyword.get(opts, :timeout, 5000))
   end
 
   # GenServer callbacks
@@ -32,8 +24,8 @@ defmodule Minty.HTTP2.Conn do
       # Mint.HTTP.t() connection
       conn: nil,
 
-      # credentials for connection
-      conn_credentials: nil,
+      # connection configuration
+      conn_config: nil,
 
       # request references, used to determine caller for response
       refs: %{},
@@ -53,35 +45,20 @@ defmodule Minty.HTTP2.Conn do
     ]
   end
 
-  def init(opts) do
-    conn_opts =
-      opts
-      |> Keyword.take([:transport_opts, :mode, :proxy, :proxy_headers, :client_settings])
-      |> Keyword.put(:protocols, [:http2])
-
-    with {:ok, host} <- Keyword.fetch(opts, :host),
-         {:ok, port} <- Keyword.fetch(opts, :port)
-    do
-      {:ok, %State{conn_credentials: {host, port, conn_opts}}, {:continue, :connect}}
-    end
+  def init(config) do
+    {:ok, %State{conn_config: config}, {:continue, :connect}}
   end
 
-  defp connect(nil, {host, port, conn_opts}) do
-    Mint.HTTP2.connect(:https, host, port, conn_opts)
+  defp connect(%Minty.Config{proxy: nil} = config) do
+    Mint.HTTP2.connect(:https, config.host, config.port, Minty.Config.conn_opts(config))
   end
 
-  defp connect({:https, _, _, _}, _) do
-    {:error, :proxy_http_only}
+  defp connect(%Minty.Config{proxy: proxy} = config) do
+    Mint.TunnelProxy.connect(proxy, {config.scheme, config.host, config.port, Minty.Config.conn_opts(config)})
   end
 
-  defp connect(proxy, {host, port, conn_opts}) do
-    Mint.TunnelProxy.connect(proxy, {:https, host, port, conn_opts})
-  end
-
-  def handle_continue(:connect, %State{conn_credentials: {host, port, conn_opts}} = state) do
-    {proxy, conn_opts} = Keyword.pop(conn_opts, :proxy)
-
-    case connect(proxy, {host, port, conn_opts}) do
+  def handle_continue(:connect, %State{conn_config: config} = state) do
+    case connect(config) do
       {:ok, conn} ->
         mcs = Mint.HTTP2.get_server_setting(conn, :max_concurrent_streams)
         {:noreply, %State{state|conn: conn, max_requests: mcs,
