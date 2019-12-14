@@ -53,12 +53,12 @@ defmodule Minty.HTTP2.Conn do
     {:ok, %State{conn_config: config}, {:continue, :connect}}
   end
 
-  defp connect(%Minty.Config{proxy: nil} = config) do
-    Mint.HTTP2.connect(:https, config.host, config.port, Minty.Config.conn_opts(config))
+  defp connect(%Minty.Config{address: {scheme, host, port}, proxy: nil} = config) do
+    Mint.HTTP2.connect(scheme, host, port, Minty.Config.conn_opts(config))
   end
 
-  defp connect(%Minty.Config{proxy: proxy} = config) do
-    Mint.TunnelProxy.connect(proxy, {config.scheme, config.host, config.port, Minty.Config.conn_opts(config)})
+  defp connect(%Minty.Config{address: {scheme, host, port}, proxy: proxy} = config) do
+    Mint.TunnelProxy.connect(proxy, {scheme, host, port, Minty.Config.conn_opts(config)})
   end
 
   def handle_continue(:connect, %State{conn_config: config} = state) do

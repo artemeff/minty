@@ -1,14 +1,13 @@
 defmodule Minty.Config do
   @moduledoc false
-  @enforce_keys [:scheme, :host, :port]
+  @enforce_keys [:address]
   defstruct [
-    # protocol options
-    :scheme, :host, :port, transport_opts: [], protocols: [], proxy: nil, proxy_headers: [],
+    :address, transport_opts: [], protocols: [], proxy: nil, proxy_headers: [],
   ]
 
   def http2(uri_or_opts, opts) do
     case new(uri_or_opts, opts) do
-      %__MODULE__{scheme: scheme} when scheme != :https ->
+      %__MODULE__{address: {scheme, _, _}} when scheme != :https ->
         {:error, :https_only}
 
       %__MODULE__{proxy: {scheme, _, _, _}} when scheme != :http ->
@@ -27,7 +26,7 @@ defmodule Minty.Config do
 
   defp new(uri, opts) when is_binary(uri) and is_list(opts) do
     %URI{scheme: scheme, host: host, port: port} = URI.parse(uri)
-    new(Keyword.merge(opts, [scheme: scheme(scheme), host: host, port: port]))
+    new(Keyword.put(opts, :address, {scheme(scheme), host, port}))
   end
 
   defp new(opts, _) when is_list(opts) do
@@ -39,8 +38,8 @@ defmodule Minty.Config do
     Enum.reduce(Map.keys(struct), struct, &cast/2)
   end
 
-  defp cast(:scheme, %__MODULE__{scheme: scheme} = config) do
-    %__MODULE__{config|scheme: scheme(scheme)}
+  defp cast(:address, %__MODULE__{address: {s, h, p}} = config) do
+    %__MODULE__{config|address: {scheme(s), h, p}}
   end
 
   defp cast(:proxy, %__MODULE__{proxy: proxy} = config) when is_binary(proxy) do
