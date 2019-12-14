@@ -17,6 +17,10 @@ defmodule Minty.HTTP2.Conn do
     GenServer.call(conn, {:request, {method, path, headers, body}}, Keyword.get(opts, :timeout, 5000))
   end
 
+  def ping(conn, payload \\ :binary.copy(<<0>>,  8)) do
+    GenServer.call(conn, {:ping, payload})
+  end
+
   # GenServer callbacks
 
   defmodule State do
@@ -108,6 +112,16 @@ defmodule Minty.HTTP2.Conn do
     end
   end
 
+  def handle_call({:ping, payload}, from, state) do
+    case Mint.HTTP2.ping(state.conn, payload) do
+      {:ok, conn, ref} ->
+        {:noreply, %State{state|conn: conn, refs: Map.put(state.refs, ref, from)}}
+
+      {:error, conn, reason} ->
+        {:reply, {:error, reason}, %State{state|conn: conn}}
+    end
+  end
+
   defp make_request({method, path, headers, body}, from, state) do
     case Mint.HTTP2.request(state.conn, method, path, headers, body) do
       {:ok, conn, ref} ->
@@ -182,6 +196,10 @@ defmodule Minty.HTTP2.Conn do
 
   defp pop_responses([]) do
     :done
+  end
+
+  defp pop_responses([{:pong, ref} | tail]) do
+    {:ok, ref, {:ok, :pong}, tail}
   end
 
   defp pop_responses([{:status, ref, status}, {:headers, ref, headers}, {:data, ref, data}, {:done, ref} | tail]) do

@@ -10,6 +10,11 @@ defmodule Integration.HTTP2Test do
       assert {:ok, conn} = Conn.start_link("https://nghttp2.org")
       assert {:ok, %Minty.Response{status: 200}} = Conn.request(conn, "GET", "/httpbin/bytes/1", [], nil)
     end
+
+    test "ping" do
+      assert {:ok, conn} = Conn.start_link("https://nghttp2.org")
+      assert {:ok, :pong} == Conn.ping(conn)
+    end
   end
 
   describe "proxy" do
