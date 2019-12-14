@@ -11,6 +11,13 @@ defmodule Integration.HTTP2Test do
       assert {:ok, %Minty.Response{status: 200}} = Conn.request(conn, "GET", "/httpbin/bytes/1", [], nil)
     end
 
+    test "respond with large body" do
+      assert {:ok, conn} = Conn.start_link("https://nghttp2.org")
+      assert {:ok, %Minty.Response{status: 200, body: body}}
+           = Conn.request(conn, "GET", "/httpbin/bytes/#{1024 * 64}", [], nil)
+      assert byte_size(body) == 1024 * 64
+    end
+
     test "ping" do
       assert {:ok, conn} = Conn.start_link("https://nghttp2.org")
       assert {:ok, :pong} == Conn.ping(conn)

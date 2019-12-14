@@ -198,12 +198,35 @@ defmodule Minty.HTTP2.Conn do
     :done
   end
 
-  defp pop_responses([{:pong, ref} | tail]) do
-    {:ok, ref, {:ok, :pong}, tail}
+  defp pop_responses([{:pong, ref} | t]) do
+    {:ok, ref, {:ok, :pong}, t}
   end
 
-  defp pop_responses([{:status, ref, status}, {:headers, ref, headers}, {:data, ref, data}, {:done, ref} | tail]) do
-    {:ok, ref, {:ok, %Minty.Response{status: status, headers: headers, body: data}}, tail}
+  defp pop_responses([{:status, ref, status}, {:headers, ref, headers}, {:data, ref, data}, {:done, ref} | t]) do
+    {:ok, ref, {:ok, %Minty.Response{status: status, headers: headers, body: data}}, t}
+  end
+
+  defp pop_responses([{:status, ref, status} | t] = responses) do
+    if Enum.member?(t, {:done, ref}) do
+      {accumulated, tail} =
+        Enum.reduce_while(t, {%Minty.Response{body: <<>>}, []}, fn
+          ({:headers, ^ref, headers}, {response, list}) ->
+            {:cont, {%{response|headers: headers}, list}}
+
+          ({:data, ^ref, data}, {response, list}) ->
+            {:cont, {%{response|body: <<response.body :: binary, data :: binary>>}, list}}
+
+          ({:done, ^ref}, acc) ->
+            {:halt, acc}
+
+          (_, acc) ->
+            acc
+        end)
+
+      {:ok, ref, {:ok, %Minty.Response{accumulated|status: status}}, tail}
+    else
+      {:wait, responses}
+    end
   end
 
   defp pop_responses(responses) do
