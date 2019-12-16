@@ -2,7 +2,11 @@ defmodule Minty.Config do
   @moduledoc false
   @enforce_keys [:address]
   defstruct [
+    # protocol options
     :address, transport_opts: [], protocols: [], proxy: nil, proxy_headers: [],
+
+    # genserver options
+    name: nil,
   ]
 
   def http2(uri_or_opts, opts) do
@@ -22,6 +26,13 @@ defmodule Minty.Config do
     config
     |> Map.take([:transport_opts, :protocols, :proxy, :proxy_headers])
     |> Map.to_list()
+  end
+
+  def gen_server_opts(%__MODULE__{} = config) do
+    config
+    |> Map.take([:name])
+    |> Map.to_list()
+    |> Enum.filter(fn({_, v}) -> v != nil end)
   end
 
   defp new(uri, opts) when is_binary(uri) and is_list(opts) do

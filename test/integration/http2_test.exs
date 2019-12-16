@@ -1,55 +1,40 @@
 defmodule Integration.HTTP2Test do
   use ExUnit.Case
+  use Minty.Shared
 
   alias Minty.HTTP2.Conn
 
+  @moduletag :integration
+
+  setup %{conn_args: conn_args} do
+    {:ok, conn} = apply(Conn, :start_link, conn_args)
+    {:ok, conn: conn}
+  end
+
   describe "nghttp2.org" do
-    @describetag :integration
+    @describetag conn_args: ["https://nghttp2.org"]
 
-    test "making requests" do
-      assert {:ok, conn} = Conn.start_link("https://nghttp2.org")
-      assert {:ok, %Minty.Response{status: 200}} = Conn.request(conn, "GET", "/httpbin/bytes/1", [], nil)
-    end
-
-    test "respond with large body" do
-      assert {:ok, conn} = Conn.start_link("https://nghttp2.org")
-      assert {:ok, %Minty.Response{status: 200, body: body}}
-           = Conn.request(conn, "GET", "/httpbin/bytes/#{1024 * 64}", [], nil)
-      assert byte_size(body) == 1024 * 64
-    end
-
-    test "ping" do
-      assert {:ok, conn} = Conn.start_link("https://nghttp2.org")
-      assert {:ok, :pong} == Conn.ping(conn)
-    end
+    shared_http2_nghttp2()
   end
 
-  describe "proxy" do
+  describe "nghttp2.org through proxy" do
     @describetag :proxy
+    @describetag conn_args: ["https://nghttp2.org", [
+      proxy: {:http, "localhost", 8888, []},
+      transport_opts: [verify: :verify_none],
+    ]]
 
-    test "to nghttp2.org" do
-      opts = [
-        proxy: {:http, "localhost", 8888, []},
-        transport_opts: [verify: :verify_none],
-      ]
-
-      assert {:ok, conn} = Conn.start_link("https://nghttp2.org", opts)
-      assert {:ok, %Minty.Response{status: 200}} = Conn.request(conn, "GET", "/httpbin/bytes/24", [], nil)
-    end
+    shared_http2_nghttp2()
   end
 
-  describe "proxy with auth" do
+  describe "nghttp2.org through proxy with auth" do
     @describetag :proxy_auth
+    @describetag conn_args: ["https://nghttp2.org", [
+      proxy: {:http, "localhost", 8888, []},
+      proxy_headers: [{"proxy-authorization", "basic #{Base.encode64("user:password")}"}],
+      transport_opts: [verify: :verify_none],
+    ]]
 
-    test "to nghttp2.org" do
-      opts = [
-        proxy: {:http, "localhost", 8888, []},
-        proxy_headers: [{"proxy-authorization", "basic #{Base.encode64("user:password")}"}],
-        transport_opts: [verify: :verify_none],
-      ]
-
-      assert {:ok, conn} = Conn.start_link("https://nghttp2.org", opts)
-      assert {:ok, %Minty.Response{status: 200}} = Conn.request(conn, "GET", "/httpbin/bytes/24", [], nil)
-    end
+    shared_http2_nghttp2()
   end
 end

@@ -6,7 +6,7 @@ defmodule Minty.HTTP2.Conn do
   def start_link(uri_or_opts, opts \\ []) when is_list(opts) do
     case Minty.Config.http2(uri_or_opts, opts) do
       {:ok, config} ->
-        GenServer.start_link(__MODULE__, config, Keyword.take(opts, [:name, :timeout, :debug, :spawn_opt]))
+        GenServer.start_link(__MODULE__, config, Minty.Config.gen_server_opts(config))
 
       {:error, reason} ->
         {:error, reason}
@@ -128,10 +128,12 @@ defmodule Minty.HTTP2.Conn do
         {:noreply, %State{state|conn: conn, refs: Map.put(state.refs, ref, from)}}
 
       {:error, conn, %Mint.HTTPError{} = error} ->
+        Logger.error("Minty.HTTP2 request error #{inspect(error)}")
         state = close_connection(error, state)
         {:noreply, %State{state|conn: conn}, {:continue, :connect}}
 
       {:error, conn, %Mint.TransportError{} = error} ->
+        Logger.error("Minty.HTTP2 request transport error #{inspect(error)}")
         state = close_connection(error, state)
         {:noreply, %State{state|conn: conn}, {:continue, :connect}}
     end
@@ -157,6 +159,7 @@ defmodule Minty.HTTP2.Conn do
         end
 
       {:error, conn, error, reason} ->
+        Logger.error("Minty.HTTP2 receive error #{inspect(error)} #{inspect(reason)}")
         state = close_connection(error, state)
         {:noreply, %State{state|conn: conn}, {:continue, :connect}}
     end
@@ -177,7 +180,6 @@ defmodule Minty.HTTP2.Conn do
 
       {:wait, partial_responses} ->
         %State{state|responses: partial_responses}
-
     end
   end
 
@@ -189,7 +191,7 @@ defmodule Minty.HTTP2.Conn do
                      inflight: List.keydelete(state.inflight, from, 0)}
 
       :error ->
-        Logger.error("#{inspect(__MODULE__)}.response unknown ref #{inspect(ref)}")
+        Logger.error("Minty.HTTP2 unknown response ref #{inspect(ref)}")
         state
     end
   end
@@ -209,18 +211,18 @@ defmodule Minty.HTTP2.Conn do
   defp pop_responses([{:status, ref, status} | t] = responses) do
     if Enum.member?(t, {:done, ref}) do
       {accumulated, tail} =
-        Enum.reduce_while(t, {%Minty.Response{body: <<>>}, []}, fn
+        Enum.reduce(t, {%Minty.Response{body: <<>>}, []}, fn
           ({:headers, ^ref, headers}, {response, list}) ->
-            {:cont, {%{response|headers: headers}, list}}
+            {%{response|headers: headers}, list}
 
           ({:data, ^ref, data}, {response, list}) ->
-            {:cont, {%{response|body: <<response.body :: binary, data :: binary>>}, list}}
+            {%{response|body: <<response.body :: binary, data :: binary>>}, list}
 
           ({:done, ^ref}, acc) ->
-            {:halt, acc}
-
-          (_, acc) ->
             acc
+
+          (element, {response, list}) ->
+            {response, list ++ [element]}
         end)
 
       {:ok, ref, {:ok, %Minty.Response{accumulated|status: status}}, tail}
