@@ -15,6 +15,9 @@ defmodule Minty.HTTP2.Conn do
 
   def request(conn, method, path, headers, body, opts \\ []) do
     GenServer.call(conn, {:request, {method, path, headers, body}}, Keyword.get(opts, :timeout, 5000))
+  catch
+    :exit, {:timeout, _} ->
+      {:error, :timeout}
   end
 
   def ping(conn, payload \\ :binary.copy(<<0>>,  8)) do
@@ -41,7 +44,7 @@ defmodule Minty.HTTP2.Conn do
       pending: [],
 
       # inflight requests, sended but something went wrong with connection,
-      # used to survive sended reeequests between reconnections
+      # used to survive sended requests between reconnections
       inflight: [],
 
       # collected responses from `Mint.HTTP2.stream/2`s
@@ -49,7 +52,7 @@ defmodule Minty.HTTP2.Conn do
     ]
   end
 
-  def init(config) do
+  def init(%Minty.Config{} = config) do
     {:ok, %State{conn_config: config}, {:continue, :connect}}
   end
 
@@ -95,7 +98,7 @@ defmodule Minty.HTTP2.Conn do
     if Mint.HTTP2.open_request_count(state.conn) < state.max_requests do
       state = %State{state|pending: tail}
 
-      case make_request(request, from, %State{state|inflight: state.inflight ++ [{from, request}]}) do
+      case make_request(request, from, append_inflight_if_robust({from, request}, state)) do
         {:noreply, state} -> {:noreply, state}
         {:noreply, state, continue} -> {:noreply, state, continue}
       end
@@ -106,7 +109,7 @@ defmodule Minty.HTTP2.Conn do
 
   def handle_call({:request, request}, from, state) do
     if Mint.HTTP2.open_request_count(state.conn) < state.max_requests do
-      make_request(request, from, %State{state|inflight: state.inflight ++ [{from, request}]})
+      make_request(request, from, append_inflight_if_robust({from, request}, state))
     else
       {:noreply, %State{state|pending: state.pending ++ [{from, request}]}}
     end
@@ -122,18 +125,40 @@ defmodule Minty.HTTP2.Conn do
     end
   end
 
+  defp append_inflight_if_robust(entry, %State{} = state) do
+    if state.conn_config.robust do
+      %State{state|inflight: state.inflight ++ [entry]}
+    else
+      state
+    end
+  end
+
   defp make_request({method, path, headers, body}, from, state) do
     case Mint.HTTP2.request(state.conn, method, path, headers, body) do
       {:ok, conn, ref} ->
         {:noreply, %State{state|conn: conn, refs: Map.put(state.refs, ref, from)}}
 
       {:error, conn, %Mint.HTTPError{} = error} ->
-        Logger.error("Minty.HTTP2 request error #{inspect(error)}")
+        state =
+          if state.conn_config.robust do
+            Logger.error("Minty.HTTP2 request error #{inspect(error)}")
+            state
+          else
+            reply_error({:error, error}, state)
+          end
+
         state = close_connection(error, state)
         {:noreply, %State{state|conn: conn}, {:continue, :connect}}
 
       {:error, conn, %Mint.TransportError{} = error} ->
-        Logger.error("Minty.HTTP2 request transport error #{inspect(error)}")
+        state =
+          if state.conn_config.robust do
+            Logger.error("Minty.HTTP2 request transport error #{inspect(error)}")
+            state
+          else
+            reply_error({:error, error}, state)
+          end
+
         state = close_connection(error, state)
         {:noreply, %State{state|conn: conn}, {:continue, :connect}}
     end
@@ -194,6 +219,14 @@ defmodule Minty.HTTP2.Conn do
         Logger.error("Minty.HTTP2 unknown response ref #{inspect(ref)}")
         state
     end
+  end
+
+  defp reply_error(error, %State{} = state) do
+    Enum.each(state.refs, fn(from) ->
+      GenServer.reply(from, error)
+    end)
+
+    %State{state | refs: %{}}
   end
 
   defp pop_responses([]) do

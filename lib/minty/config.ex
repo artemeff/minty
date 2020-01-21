@@ -5,6 +5,9 @@ defmodule Minty.Config do
     # protocol options
     :address, transport_opts: [], protocols: [], proxy: nil, proxy_headers: [],
 
+    # behaviour
+    robust: false,
+
     # genserver options
     name: nil,
   ]

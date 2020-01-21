@@ -17,6 +17,14 @@ defmodule Integration.HTTP2Test do
     shared_http2_nghttp2()
   end
 
+  describe "nghttp2.org robust" do
+    @describetag conn_args: ["https://nghttp2.org", [
+      robust: true,
+    ]]
+
+    shared_http2_nghttp2()
+  end
+
   describe "nghttp2.org through proxy" do
     @describetag :proxy
     @describetag conn_args: ["https://nghttp2.org", [

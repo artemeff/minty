@@ -35,6 +35,11 @@ defmodule Minty.Shared do
       test "ping", %{conn: conn} do
         assert {:ok, :pong} == Minty.HTTP2.Conn.ping(conn)
       end
+
+      test "errors", %{conn: conn} do
+        assert {:error, :timeout}
+             = Minty.HTTP2.Conn.request(conn, "GET", "/httpbin/delay/10", [], nil)
+      end
     end
   end
 end
