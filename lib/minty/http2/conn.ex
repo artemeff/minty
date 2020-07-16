@@ -22,6 +22,9 @@ defmodule Minty.HTTP2.Conn do
 
   def ping(conn, payload \\ :binary.copy(<<0>>,  8)) do
     GenServer.call(conn, {:ping, payload})
+  catch
+    :exit, {:timeout, _} ->
+      {:error, :timeout}
   end
 
   # GenServer callbacks
