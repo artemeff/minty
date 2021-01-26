@@ -225,7 +225,7 @@ defmodule Minty.HTTP2.Conn do
   end
 
   defp reply_error(error, %State{} = state) do
-    Enum.each(state.refs, fn(from) ->
+    Enum.each(state.refs, fn({_ref, from}) ->
       GenServer.reply(from, error)
     end)
 
