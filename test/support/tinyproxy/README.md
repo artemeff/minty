@@ -1,7 +1,7 @@
 Build image:
 
 ```bash
-$ dockre build -t tinyproxy .
+$ docker build -t tinyproxy .
 ```
 
 Start tinyproxy without auth:

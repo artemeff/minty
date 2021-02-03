@@ -5,7 +5,7 @@ defmodule Minty.MixProject do
     [
       app: :minty,
       version: "0.1.1",
-      elixir: "~> 1.9",
+      elixir: "~> 1.10",
       start_permanent: Mix.env() == :prod,
       deps: deps()
     ]
@@ -19,7 +19,7 @@ defmodule Minty.MixProject do
 
   defp deps do
     [
-      {:mint, "1.0.0"},
+      {:mint, "1.2.0"},
       {:castore, "~> 0.1.9", optional: true}
     ]
   end
