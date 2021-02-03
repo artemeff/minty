@@ -1,7 +1,8 @@
-defmodule Minty.HTTP2.Conn do
+defmodule Minty.HTTP2 do
   use GenServer
 
   require Logger
+  require Mint.HTTP
 
   def start_link(uri_or_opts, opts \\ []) when is_list(opts) do
     case Minty.Config.http2(uri_or_opts, opts) do
@@ -167,8 +168,8 @@ defmodule Minty.HTTP2.Conn do
     end
   end
 
-  def handle_info(message, state) do
-    case Mint.HTTP2.stream(state.conn, message) do
+  def handle_info(message, %State{conn: conn} = state) when Mint.HTTP.is_connection_message(conn, message) do
+    case Mint.HTTP2.stream(conn, message) do
       :unknown ->
         {:noreply, state}
 
@@ -191,6 +192,10 @@ defmodule Minty.HTTP2.Conn do
         state = close_connection(error, state)
         {:noreply, %State{state|conn: conn}, {:continue, :connect}}
     end
+  end
+
+  def handle_info(_message, state) do
+    {:noreply, state}
   end
 
   defp close_connection(_reason, state) do
