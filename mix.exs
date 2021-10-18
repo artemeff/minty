@@ -19,8 +19,8 @@ defmodule Minty.MixProject do
 
   defp deps do
     [
-      {:mint, "~> 1.2.0"},
-      {:castore, "~> 0.1.9", optional: true}
+      {:mint, "~> 1.4.0"},
+      {:castore, "~> 0.1.12", optional: true}
     ]
   end
 end
